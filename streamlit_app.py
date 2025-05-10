@@ -8,6 +8,7 @@ st.set_page_config(page_title="Employee Absence Cost Analysis", layout="wide")
 @st.cache_data
 def load_csv(file):
     df = pd.read_csv(file)
+    # Ensure advanced columns exist with defaults
     advanced_cols = {
         'training_hours': 0.0,
         'skill_multiplier': 1.0,
@@ -45,11 +46,11 @@ def calculate_cost(params, adv_params):
     benefits_cost = total * (adv_params['benefits_loading'] / 100)
 
     # Sum advanced
-    total += skill_adj + training_cost + delay_cost + rework_cost + hr_overhead_cost
-    total = total * adv_params['seasonal_factor'] + compliance + benefits_cost
+    total_adv = total + skill_adj + training_cost + delay_cost + rework_cost + hr_overhead_cost
+    total_adv = total_adv * adv_params['seasonal_factor'] + compliance + benefits_cost
 
     # Overhead and annualize
-    total_overhead = total * (1 + params['overhead_pct'] / 100)
+    total_overhead = total_adv * (1 + params['overhead_pct'] / 100)
     annualized = total_overhead * params['absences_per_year']
 
     return {
@@ -117,17 +118,16 @@ with st.sidebar.expander("Advanced Information"):
     compliance_cost = st.number_input("Regulatory/Compliance Cost ($)", 0.0, min_value=0.0)
     benefits_loading = st.number_input("Benefit Loading (%)", 0.0, min_value=0.0, max_value=100.0)
 
-# Load CSV for batch mode
+# Load CSV for Batch Mode
 df_profiles = None
 if mode == "Batch":
     uploaded = st.sidebar.file_uploader("Upload profiles CSV", type=["csv"])
     if uploaded:
         df_profiles = load_csv(uploaded)
 
-# Main header
+# Main Header
 st.header("Employee Absence Cost Analysis")
 
-# Single mode
 if mode == "Single":
     base_params = {
         'hourly_rate': hourly_rate,
@@ -154,6 +154,7 @@ if mode == "Single":
         'compliance_cost': compliance_cost,
         'benefits_loading': benefits_loading
     }
+
     st.subheader(f"Employee: {name}")
     cost = calculate_cost(base_params, adv_params)
     c1, c2 = st.columns(2)
@@ -162,7 +163,8 @@ if mode == "Single":
 
     df = pd.DataFrame(cost.items(), columns=["Component", "Amount"])
     st.dataframe(df)
-    # Group minor contributors into 'Other'
+
+    # Pie: Top 6 with 'Other'
     df_sorted = df.sort_values(by='Amount', ascending=False)
     top_n = 6
     top_df = df_sorted.head(top_n).copy()
@@ -171,12 +173,11 @@ if mode == "Single":
         top_df = pd.concat([top_df, pd.DataFrame([{'Component': 'Other', 'Amount': other_sum}])], ignore_index=True)
     fig = px.pie(top_df, names='Component', values='Amount', title='Cost Breakdown')
     st.plotly_chart(fig)
-    st.bar_chart(df.set_index('Component')['Amount'])
 
+    st.bar_chart(df.set_index('Component')['Amount'])
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("Download CSV", csv, file_name=f"{name}_cost.csv")
 
-# Batch mode
 elif mode == "Batch" and df_profiles is not None:
     results = []
     for _, r in df_profiles.iterrows():
@@ -199,6 +200,7 @@ elif mode == "Batch" and df_profiles is not None:
         c = calculate_cost(base, adv)
         c['Employee'] = r.employee_name
         results.append(c)
+
     dfb = pd.DataFrame(results)
     b1, b2 = st.columns(2)
     b1.metric("Avg Cost/Absence", f"${dfb['Total per Absence'].mean():.2f}")
@@ -207,8 +209,3 @@ elif mode == "Batch" and df_profiles is not None:
     st.bar_chart(dfb.set_index('Employee')['Total per Absence'])
     csvb = dfb.to_csv(index=False).encode('utf-8')
     st.download_button("Download CSV", csvb, file_name='batch_costs.csv')
-"""
-
-file_path = '/mnt/data/streamlit_app_updated.py'
-with open(file_path, 'w') as f:
-    f.write(updated_code)
