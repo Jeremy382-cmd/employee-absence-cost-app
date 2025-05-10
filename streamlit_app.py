@@ -4,173 +4,211 @@ import plotly.express as px
 
 st.set_page_config(page_title="Employee Absence Cost Analysis", layout="wide")
 
-# --- Sidebar: Mode Selection ---
-mode = st.sidebar.radio(
-    label="Mode", options=["Single", "Batch"], index=0,
-    help="Select single-employee analysis or batch analysis via CSV"
-)
+# --- Utility & Caching ---
+@st.cache_data
+def load_csv(file):
+    df = pd.read_csv(file)
+    advanced_cols = {
+        'training_hours': 0.0,
+        'skill_multiplier': 1.0,
+        'delay_penalty': 0.0,
+        'rework_pct': 0.0,
+        'hr_overhead_hrs': 0.0,
+        'seasonal_factor': 1.0,
+        'compliance_cost': 0.0,
+        'benefits_loading': 0.0
+    }
+    for col, default in advanced_cols.items():
+        if col not in df.columns:
+            df[col] = default
+    return df
+
+@st.cache_data
+def calculate_cost(params, adv_params):
+    # Base components
+    direct = params['hourly_rate'] * params['hours_per_absence']
+    mgr_hr = params['manager_weekly_salary'] / params['weekly_hours'] if params['weekly_hours'] > 0 else 0.0
+    manager = mgr_hr * params['manager_time_hours'] * params['num_managers']
+    overtime = params['overtime_rate'] * params['overtime_hours']
+    productivity = (params['hourly_rate'] * params['weekly_hours']) * (params['productivity_loss_pct'] / 100)
+    equipment = params['idle_equipment_rate'] * params['idle_hours']
+    total = direct + manager + overtime + productivity + equipment
+
+    # Advanced adjustments
+    skill_adj = total * (adv_params['skill_multiplier'] - 1)
+    training_cost = adv_params['training_hours'] * params['hourly_rate']
+    delay_cost = adv_params['delay_penalty'] * params['hours_per_absence']
+    rework_cost = total * (adv_params['rework_pct'] / 100)
+    hr_overhead_cost = adv_params['hr_overhead_hrs'] * mgr_hr
+    seasonal_cost = total * (adv_params['seasonal_factor'] - 1)
+    compliance = adv_params['compliance_cost']
+    benefits_cost = total * (adv_params['benefits_loading'] / 100)
+
+    # Sum advanced
+    total += skill_adj + training_cost + delay_cost + rework_cost + hr_overhead_cost
+    total = total * adv_params['seasonal_factor'] + compliance + benefits_cost
+
+    # Overhead and annualize
+    total_overhead = total * (1 + params['overhead_pct'] / 100)
+    annualized = total_overhead * params['absences_per_year']
+
+    return {
+        'Total per Absence': total_overhead,
+        'Annualized Cost': annualized,
+        'Direct Cost': direct,
+        'Manager Cost': manager,
+        'Overtime Cost': overtime,
+        'Productivity Loss': productivity,
+        'Equipment Idle': equipment,
+        'Skill Adj': skill_adj,
+        'Training Cost': training_cost,
+        'Delay Cost': delay_cost,
+        'Rework Cost': rework_cost,
+        'HR Overhead': hr_overhead_cost,
+        'Seasonal Cost': seasonal_cost,
+        'Compliance Cost': compliance,
+        'Benefits Cost': benefits_cost
+    }
 
 # --- Sidebar Inputs ---
+mode = st.sidebar.radio("Mode", ["Single", "Batch"], index=0)
+
 with st.sidebar.expander("Defaults"):
-    default_weekly_hours = st.number_input(
-        label="Default Weekly Hours", value=40.0, min_value=0.0, format="%.1f",
-        help="Standard work hours per week for an employee"
-    )
-    overhead_pct = st.number_input(
-        label="Overhead Multiplier (%)", value=0.0, min_value=0.0, max_value=100.0, format="%.1f",
-        help="Additional overhead percentage to apply to total costs"
-    )
+    default_weekly_hours = st.number_input("Default Weekly Hours", 40.0, min_value=0.0)
+    overhead_pct = st.number_input("Overhead Multiplier (%)", 0.0, min_value=0.0)
 
 with st.sidebar.expander("Employee Details"):
     if mode == "Single":
-        name = st.text_input(label="Employee Name", value="Adam Waller", help="Employee to analyze")
-        employment_type = st.radio(
-            label="Employment Type", options=["Hourly","Salaried"], index=0,
-            help="How the employee is compensated"
-        )
-        if employment_type == "Hourly":
-            hourly_rate = st.number_input(
-                label="Hourly Rate ($/hr)", value=35.29, min_value=0.0, format="%.2f",
-                help="Cost per hour"
-            )
-            weekly_hours = st.number_input(
-                label="Scheduled Hours/Week", value=default_weekly_hours, min_value=0.0, format="%.1f",
-                help="Typical weekly hours"
-            )
+        name = st.text_input("Employee Name", "Adam Waller")
+        emp_type = st.radio("Employment Type", ["Hourly", "Salaried"], index=0)
+        if emp_type == "Hourly":
+            hourly_rate = st.number_input("Hourly Rate ($/hr)", 35.29, min_value=0.0)
+            weekly_hours = st.number_input("Scheduled Hours/Week", default_weekly_hours, min_value=0.0)
         else:
-            weekly_salary = st.number_input(
-                label="Weekly Salary ($)", value=2000.0, min_value=0.0, format="%.2f",
-                help="Cost per week"
-            )
-            weekly_hours = st.number_input(
-                label="Scheduled Hours/Week", value=default_weekly_hours, min_value=0.0, format="%.1f",
-                help="Typical weekly hours"
-            )
-            hourly_rate = weekly_salary/weekly_hours if weekly_hours>0 else 0.0
+            weekly_salary = st.number_input("Weekly Salary ($)", 2000.0, min_value=0.0)
+            weekly_hours = st.number_input("Scheduled Hours/Week", default_weekly_hours, min_value=0.0)
+            hourly_rate = weekly_salary / weekly_hours if weekly_hours > 0 else 0.0
 
 with st.sidebar.expander("Absence Pattern"):
-    absences_per_year = st.number_input(
-        label="Absences per Year", value=6, min_value=0,
-        help="Historical unplanned absences per year"
-    )
-    hours_per_absence = st.number_input(
-        label="Hours Missed/Absence", value=(weekly_hours/5), min_value=0.0, format="%.1f",
-        help="Hours lost per absence"
-    )
+    absences_per_year = st.number_input("Absences per Year", 6, min_value=0)
+    hours_per_absence = st.number_input("Hours Missed/Absence", default_weekly_hours / 5, min_value=0.0)
 
 with st.sidebar.expander("Management Impact"):
-    num_managers = st.number_input(
-        label="Managers Affected", value=3, min_value=0,
-        help="Managers covering the absence"
-    )
-    manager_weekly_salary = st.number_input(
-        label="Mgr Weekly Salary ($)", value=2000.0, min_value=0.0, format="%.2f",
-        help="Cost per manager per week"
-    )
-    manager_time_hours = st.number_input(
-        label="Mgr Time/Absence (hrs)", value=1.0, min_value=0.0, format="%.1f",
-        help="Hours each manager spends"
-    )
+    num_managers = st.number_input("Managers Affected", 3, min_value=0)
+    manager_weekly_salary = st.number_input("Mgr Weekly Salary ($)", 2000.0, min_value=0.0)
+    manager_time_hours = st.number_input("Mgr Time/Absence (hrs)", 1.0, min_value=0.0)
 
 with st.sidebar.expander("Additional Costs"):
-    overtime_rate = st.number_input(
-        label="Overtime Rate ($/hr)", value=0.0, min_value=0.0, format="%.2f",
-        help="Backfill hourly cost"
-    )
-    overtime_hours = st.number_input(
-        label="OT Hours/Absence", value=0.0, min_value=0.0, format="%.1f",
-        help="Overtime hours needed"
-    )
-    productivity_loss_pct = st.number_input(
-        label="Prod Loss (%)", value=10.0, min_value=0.0, max_value=100.0, format="%.1f",
-        help="Estimated productivity loss"
-    )
-    idle_equipment_rate = st.number_input(
-        label="Idle Equip Rate ($/hr)", value=0.0, min_value=0.0, format="%.2f",
-        help="Cost of idle equipment"
-    )
-    idle_hours = st.number_input(
-        label="Idle Hours/Absence", value=0.0, min_value=0.0, format="%.1f",
-        help="Equipment downtime hours"
-    )
+    overtime_rate = st.number_input("Overtime Rate ($/hr)", 0.0, min_value=0.0)
+    overtime_hours = st.number_input("OT Hours/Absence", 0.0, min_value=0.0)
+    productivity_loss_pct = st.number_input("Prod Loss (%)", 10.0, min_value=0.0, max_value=100.0)
+    idle_equipment_rate = st.number_input("Idle Equip Rate ($/hr)", 0.0, min_value=0.0)
+    idle_hours = st.number_input("Idle Hours/Absence", 0.0, min_value=0.0)
 
-role_criticality = st.selectbox(label="Role Criticality", options=["Low","Medium","High"],
-    help="Role's operational importance"
-)
+with st.sidebar.expander("Advanced Information"):
+    absence_reason = st.selectbox("Absence Reason", ["Illness", "Personal", "No-Show", "Other"])
+    training_hours = st.number_input("Replacement Training Time (hrs)", 0.0, min_value=0.0)
+    skill_multiplier = st.slider("Skill Level Multiplier", 1.0, 2.0, 1.0, 0.1)
+    delay_penalty = st.number_input("Project Delay Penalty ($/hr)", 0.0, min_value=0.0)
+    rework_pct = st.number_input("Rework Rate (%)", 0.0, min_value=0.0, max_value=100.0)
+    hr_overhead_hrs = st.number_input("Administrative Overhead (hrs)", 0.0, min_value=0.0)
+    morale_score = st.slider("Morale Impact Score", 1, 10, 5)
+    seasonal_factor = st.number_input("Seasonal Adjustment Factor", 1.0, min_value=0.1, max_value=2.0)
+    compliance_cost = st.number_input("Regulatory/Compliance Cost ($)", 0.0, min_value=0.0)
+    benefits_loading = st.number_input("Benefit Loading (%)", 0.0, min_value=0.0, max_value=100.0)
 
-# CSV Loading
-df_profiles=None
-if mode=="Batch":
-    uploaded=st.sidebar.file_uploader("Upload profiles CSV",type=["csv"])
-    @st.cache_data
-    def load_csv(f): return pd.read_csv(f)
-    if uploaded: df_profiles=load_csv(uploaded)
+# Load CSV for batch mode
+df_profiles = None
+if mode == "Batch":
+    uploaded = st.sidebar.file_uploader("Upload profiles CSV", type=["csv"])
+    if uploaded:
+        df_profiles = load_csv(uploaded)
 
-# Cost functions
-@st.cache_data
-def calculate_cost(
-    hourly_rate, weekly_hours, absences_per_year, hours_per_absence,
-    num_managers, manager_weekly_salary, manager_time_hours,
-    overtime_rate, overtime_hours, productivity_loss_pct,
-    idle_equipment_rate, idle_hours, overhead_pct
-):
-    direct=hourly_rate*hours_per_absence
-    mgr_hr=manager_weekly_salary/weekly_hours if weekly_hours>0 else 0
-    mgr_cost=mgr_hr*manager_time_hours*num_managers
-    ot_cost=overtime_rate*overtime_hours
-    prod_cost=(hourly_rate*weekly_hours)*(productivity_loss_pct/100)
-    eq_cost=idle_equipment_rate*idle_hours
-    total=direct+mgr_cost+ot_cost+prod_cost+eq_cost
-    total_overhead=total*(1+overhead_pct/100)
-    annual=total_overhead*absences_per_year
-    return {
-        "Total per Absence":total_overhead,
-        "Annualized Cost":annual,
-        "Direct Cost":direct,
-        "Manager Cost":mgr_cost,
-        "Overtime Cost":ot_cost,
-        "Prod Loss Cost":prod_cost,
-        "Equip Idle Cost":eq_cost
-    }
-
+# Main header
 st.header("Employee Absence Cost Analysis")
-# Display selected employee in single mode
-if mode == "Single":
-    st.subheader(f"Employee: {name}")
 
-if mode=="Single":
-    cost=calculate_cost(
-        hourly_rate,weekly_hours,absences_per_year,hours_per_absence,
-        num_managers,manager_weekly_salary,manager_time_hours,
-        overtime_rate,overtime_hours,productivity_loss_pct,
-        idle_equipment_rate,idle_hours,overhead_pct
-    )
-    c1,c2=st.columns(2)
-    c1.metric("Cost/Absence",f"${cost['Total per Absence']:.2f}")
-    c2.metric("Annual Cost",f"${cost['Annualized Cost']:.2f}")
-    df=pd.DataFrame(cost.items(),columns=["Component","Amount"])
+# Single mode
+if mode == "Single":
+    base_params = {
+        'hourly_rate': hourly_rate,
+        'weekly_hours': weekly_hours,
+        'absences_per_year': absences_per_year,
+        'hours_per_absence': hours_per_absence,
+        'num_managers': num_managers,
+        'manager_weekly_salary': manager_weekly_salary,
+        'manager_time_hours': manager_time_hours,
+        'overtime_rate': overtime_rate,
+        'overtime_hours': overtime_hours,
+        'productivity_loss_pct': productivity_loss_pct,
+        'idle_equipment_rate': idle_equipment_rate,
+        'idle_hours': idle_hours,
+        'overhead_pct': overhead_pct
+    }
+    adv_params = {
+        'training_hours': training_hours,
+        'skill_multiplier': skill_multiplier,
+        'delay_penalty': delay_penalty,
+        'rework_pct': rework_pct,
+        'hr_overhead_hrs': hr_overhead_hrs,
+        'seasonal_factor': seasonal_factor,
+        'compliance_cost': compliance_cost,
+        'benefits_loading': benefits_loading
+    }
+    st.subheader(f"Employee: {name}")
+    cost = calculate_cost(base_params, adv_params)
+    c1, c2 = st.columns(2)
+    c1.metric("Cost per Absence", f"${cost['Total per Absence']:.2f}")
+    c2.metric("Annualized Cost", f"${cost['Annualized Cost']:.2f}")
+
+    df = pd.DataFrame(cost.items(), columns=["Component", "Amount"])
     st.dataframe(df)
-    fig=px.pie(df,names='Component',values='Amount',title='Cost Breakdown')
+    # Group minor contributors into 'Other'
+    df_sorted = df.sort_values(by='Amount', ascending=False)
+    top_n = 6
+    top_df = df_sorted.head(top_n).copy()
+    if len(df_sorted) > top_n:
+        other_sum = df_sorted['Amount'].iloc[top_n:].sum()
+        top_df = pd.concat([top_df, pd.DataFrame([{'Component': 'Other', 'Amount': other_sum}])], ignore_index=True)
+    fig = px.pie(top_df, names='Component', values='Amount', title='Cost Breakdown')
     st.plotly_chart(fig)
     st.bar_chart(df.set_index('Component')['Amount'])
-    csv=df.to_csv(index=False).encode('utf-8')
-    st.download_button("Download CSV",csv,file_name=f"{name}_cost.csv")
-elif mode=="Batch" and df_profiles is not None:
-    results=[]
-    for _,r in df_profiles.iterrows():
-        c=calculate_cost(
-            r.hourly_rate,r.weekly_hours,r.absences_per_year,r.hours_per_absence,
-            r.num_managers,r.manager_weekly_salary,r.manager_time_hours,
-            r.overtime_rate,r.overtime_hours,r.productivity_loss_pct,
-            r.idle_equipment_rate,r.idle_hours,overhead_pct
-        )
-        c['Employee']=r.employee_name
+
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("Download CSV", csv, file_name=f"{name}_cost.csv")
+
+# Batch mode
+elif mode == "Batch" and df_profiles is not None:
+    results = []
+    for _, r in df_profiles.iterrows():
+        base = {
+            'hourly_rate': r.hourly_rate,
+            'weekly_hours': r.weekly_hours,
+            'absences_per_year': r.absences_per_year,
+            'hours_per_absence': r.hours_per_absence,
+            'num_managers': r.num_managers,
+            'manager_weekly_salary': r.manager_weekly_salary,
+            'manager_time_hours': r.manager_time_hours,
+            'overtime_rate': r.overtime_rate,
+            'overtime_hours': r.overtime_hours,
+            'productivity_loss_pct': r.productivity_loss_pct,
+            'idle_equipment_rate': r.idle_equipment_rate,
+            'idle_hours': r.idle_hours,
+            'overhead_pct': overhead_pct
+        }
+        adv = {col: r[col] for col in ['training_hours', 'skill_multiplier', 'delay_penalty', 'rework_pct', 'hr_overhead_hrs', 'seasonal_factor', 'compliance_cost', 'benefits_loading']}
+        c = calculate_cost(base, adv)
+        c['Employee'] = r.employee_name
         results.append(c)
-    dfb=pd.DataFrame(results)
-    b1,b2=st.columns(2)
-    b1.metric("Avg Cost/Absence",f"${dfb['Total per Absence'].mean():.2f}")
-    b2.metric("Total Annual Cost",f"${dfb['Annualized Cost'].sum():.2f}")
+    dfb = pd.DataFrame(results)
+    b1, b2 = st.columns(2)
+    b1.metric("Avg Cost/Absence", f"${dfb['Total per Absence'].mean():.2f}")
+    b2.metric("Total Annualized Cost", f"${dfb['Annualized Cost'].sum():.2f}")
     st.dataframe(dfb)
     st.bar_chart(dfb.set_index('Employee')['Total per Absence'])
-    csvb=dfb.to_csv(index=False).encode('utf-8')
-    st.download_button("Download CSV",csvb,file_name='batch_costs.csv')
+    csvb = dfb.to_csv(index=False).encode('utf-8')
+    st.download_button("Download CSV", csvb, file_name='batch_costs.csv')
+"""
+
+file_path = '/mnt/data/streamlit_app_updated.py'
+with open(file_path, 'w') as f:
+    f.write(updated_code)
