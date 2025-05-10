@@ -9,12 +9,19 @@ st.title("Employee Absence Cost Analysis")
 # --- Sidebar: Default Settings ---
 st.sidebar.header("Defaults")
 default_weekly_hours = st.sidebar.number_input(
-    "Default Weekly Hours", value=40.0, min_value=0.0, format="%.1f"
+    label="Default Weekly Hours",
+    value=40.0,
+    min_value=0.0,
+    format="%.1f"
 )
 
 # --- Sidebar: Profile Management ---
 st.sidebar.header("Employee Profiles")
-profile_mode = st.sidebar.radio("Profile Mode", ["Single", "Batch"], index=0)
+profile_mode = st.sidebar.radio(
+    label="Profile Mode",
+    options=["Single", "Batch"],
+    index=0
+)
 
 # Initialize session state for profiles
 if "profiles" not in st.session_state:
@@ -23,7 +30,8 @@ if "profiles" not in st.session_state:
 # Batch Mode: upload CSV
 if profile_mode == "Batch":
     uploaded_file = st.sidebar.file_uploader(
-        "Upload Profiles CSV", type=["csv"]
+        label="Upload Profiles CSV",
+        type=["csv"]
     )
     df_profiles = None
     if uploaded_file:
@@ -34,60 +42,97 @@ if profile_mode == "Batch":
             st.sidebar.error(f"Error loading CSV: {e}")
 else:
     # Single Mode: input form + save
-    name = st.sidebar.text_input("Employee Name", value="Adam Waller")
+    name = st.sidebar.text_input(
+        label="Employee Name",
+        value="Adam Waller"
+    )
     employment_type = st.sidebar.radio(
-        "Employment Type", ["Hourly", "Salaried"], index=0
+        label="Employment Type",
+        options=["Hourly", "Salaried"],
+        index=0
     )
 
     if employment_type == "Hourly":
         hourly_rate = st.sidebar.number_input(
-            "Hourly Wage ($/hr)", value=35.29, min_value=0.0, format="%.2f"
+            label="Hourly Wage ($/hr)",
+            value=35.29,
+            min_value=0.0,
+            format="%.2f"
         )
         weekly_hours = st.sidebar.number_input(
-            "Scheduled Hours per Week", value=default_weekly_hours,
-            min_value=0.0, format="%.1f"
+            label="Scheduled Hours per Week",
+            value=default_weekly_hours,
+            min_value=0.0,
+            format="%.1f"
         )
     else:
         weekly_salary = st.sidebar.number_input(
-            "Weekly Salary ($)", value=2000.0, min_value=0.0, format="%.2f"
+            label="Weekly Salary ($)",
+            value=2000.0,
+            min_value=0.0,
+            format="%.2f"
         )
         weekly_hours = st.sidebar.number_input(
-            "Scheduled Hours per Week", value=default_weekly_hours,
-            min_value=0.0, format="%.1f"
+            label="Scheduled Hours per Week",
+            value=default_weekly_hours,
+            min_value=0.0,
+            format="%.1f"
         )
         hourly_rate = weekly_salary / weekly_hours if weekly_hours > 0 else 0.0
 
     absences_per_year = st.sidebar.number_input(
-        "Average Absences per Year", value=6, min_value=0
+        label="Average Absences per Year",
+        value=6,
+        min_value=0
     )
     hours_per_absence = st.sidebar.number_input(
-        "Hours Missed per Absence", value=(weekly_hours / 5 if weekly_hours > 0 else 0.0),
-        min_value=0.0, format="%.1f"
+        label="Hours Missed per Absence",
+        value=(weekly_hours / 5 if weekly_hours > 0 else 0.0),
+        min_value=0.0,
+        format="%.1f"
     )
 
     num_managers = st.sidebar.number_input(
-        "Number of Managers Affected", value=3, min_value=0
+        label="Number of Managers Affected",
+        value=3,
+        min_value=0
     )
     manager_weekly_salary = st.sidebar.number_input(
-        "Manager Weekly Salary ($)", value=2000.0, min_value=0.0, format="%.2f"
+        label="Manager Weekly Salary ($)",
+        value=2000.0,
+        min_value=0.0,
+        format="%.2f"
     )
     manager_time_hours = st.sidebar.number_input(
-        "Manager Time per Absence (hrs)", value=1.0, min_value=0.0, format="%.1f"
+        label="Manager Time per Absence (hrs)",
+        value=1.0,
+        min_value=0.0,
+        format="%.1f"
     )
 
     overtime_rate = st.sidebar.number_input(
-        "Overtime/Backfill Rate ($/hr)", value=0.0, min_value=0.0, format="%.2f"
+        label="Overtime/Backfill Rate ($/hr)",
+        value=0.0,
+        min_value=0.0,
+        format="%.2f"
     )
     overtime_hours = st.sidebar.number_input(
-        "OT Hours per Absence", value=0.0, min_value=0.0, format="%.1f"
+        label="OT Hours per Absence",
+        value=0.0,
+        min_value=0.0,
+        format="%.1f"
     )
     productivity_loss_pct = st.sidebar.number_input(
-        "Estimated Productivity Loss (%)", value=10.0, min_value=0.0,
-        max_value=100.0, format="%.1f"
+        label="Estimated Productivity Loss (%)",
+        value=10.0,
+        min_value=0.0,
+        max_value=100.0,
+        format="%.1f"
     )
 
     role_criticality = st.sidebar.selectbox(
-        "Role Criticality", ["Low", "Medium", "High"]
+        label="Role Criticality",
+        options=["Low", "Medium", "High"]
     )
 
     if st.sidebar.button("Add Profile"):
@@ -110,7 +155,8 @@ else:
 
     if st.session_state["profiles"]:
         idx = st.sidebar.selectbox(
-            "Select Profile", list(range(len(st.session_state["profiles"]))),
+            label="Select Profile",
+            options=list(range(len(st.session_state["profiles"]))),
             format_func=lambda i: st.session_state["profiles"][i]["employee_name"]
         )
         profile = st.session_state["profiles"][idx]
@@ -217,3 +263,5 @@ elif profile_mode == "Single":
         ],
         "Medium": [
             "Encourage periodic knowledge sharing sessions",
+            "Create a flexible shift swap system"
+        ],
