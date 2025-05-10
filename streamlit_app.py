@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import io
 
 st.set_page_config(page_title="Employee Absence Cost Analysis", layout="wide")
 
@@ -28,12 +27,12 @@ if "profiles" not in st.session_state:
     st.session_state["profiles"] = []
 
 # Batch Mode: upload CSV
+df_profiles = None
 if profile_mode == "Batch":
     uploaded_file = st.sidebar.file_uploader(
         label="Upload Profiles CSV",
         type=["csv"]
     )
-    df_profiles = None
     if uploaded_file:
         try:
             df_profiles = pd.read_csv(uploaded_file)
@@ -258,10 +257,25 @@ elif profile_mode == "Single":
     suggestions_map = {
         "High": [
             "Implement cross-training for backup support",
-            "Maintain on-call backup staff", 
+            "Maintain on-call backup staff",
             "Develop a formal absence-coverage protocol"
         ],
         "Medium": [
             "Encourage periodic knowledge sharing sessions",
             "Create a flexible shift swap system"
         ],
+        "Low": [
+            "Reassign tasks temporarily to peers",
+            "Monitor absence trend for future planning"
+        ]
+    }
+    st.write("---")
+    st.subheader("Mitigation Suggestions")
+    for item in suggestions_map.get(role_criticality, []):
+        st.write(f"- {item}")
+
+# --- Notes ---
+st.write("---")
+st.write("**Notes:**")
+st.write("- Adjust inputs in the sidebar to refine your analysis.")
+st.write("- For batch mode, ensure your CSV headers match the expected field names.")
