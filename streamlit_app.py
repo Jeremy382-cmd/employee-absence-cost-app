@@ -134,6 +134,9 @@ def calculate_cost(
     }
 
 st.header("Employee Absence Cost Analysis")
+# Display selected employee in single mode
+if mode == "Single":
+    st.subheader(f"Employee: {name}")
 
 if mode=="Single":
     cost=calculate_cost(
