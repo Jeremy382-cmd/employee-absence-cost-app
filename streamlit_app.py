@@ -28,10 +28,12 @@ def load_csv(file):
 def calculate_cost(params, adv_params):
     # Base components
     direct = params['hourly_rate'] * params['hours_per_absence']
-    mgr_hr = params['manager_weekly_salary'] / params['weekly_hours'] if params['weekly_hours'] > 0 else 0.0
+    mgr_hr = (params['manager_weekly_salary'] / params['weekly_hours']
+              if params['weekly_hours'] > 0 else 0.0)
     manager = mgr_hr * params['manager_time_hours'] * params['num_managers']
     overtime = params['overtime_rate'] * params['overtime_hours']
-    productivity = (params['hourly_rate'] * params['weekly_hours']) * (params['productivity_loss_pct'] / 100)
+    productivity = ((params['hourly_rate'] * params['weekly_hours']) *
+                    (params['productivity_loss_pct'] / 100))
     equipment = params['idle_equipment_rate'] * params['idle_hours']
     total = direct + manager + overtime + productivity + equipment
 
@@ -46,7 +48,8 @@ def calculate_cost(params, adv_params):
     benefits_cost = total * (adv_params['benefits_loading'] / 100)
 
     # Sum advanced
-    total_adv = total + skill_adj + training_cost + delay_cost + rework_cost + hr_overhead_cost
+    total_adv = (total + skill_adj + training_cost + delay_cost +
+                 rework_cost + hr_overhead_cost)
     total_adv = total_adv * adv_params['seasonal_factor'] + compliance + benefits_cost
 
     # Overhead and annualize
@@ -88,11 +91,11 @@ with st.sidebar.expander("Employee Details"):
         else:
             weekly_salary = st.number_input("Weekly Salary ($)", 2000.0, min_value=0.0)
             weekly_hours = st.number_input("Scheduled Hours/Week", default_weekly_hours, min_value=0.0)
-            hourly_rate = weekly_salary / weekly_hours if weekly_hours > 0 else 0.0
+            hourly_rate = (weekly_salary / weekly_hours) if weekly_hours > 0 else 0.0
 
 with st.sidebar.expander("Absence Pattern"):
     absences_per_year = st.number_input("Absences per Year", 6, min_value=0)
-    hours_per_absence = st.number_input("Hours Missed/Absence", default_weekly_hours / 5, min_value=0.0)
+    hours_per_absence = st.number_input("Hours Missed/Absence", default_weekly_hours/5, min_value=0.0)
 
 with st.sidebar.expander("Management Impact"):
     num_managers = st.number_input("Managers Affected", 3, min_value=0)
@@ -113,7 +116,6 @@ with st.sidebar.expander("Advanced Information"):
     delay_penalty = st.number_input("Project Delay Penalty ($/hr)", 0.0, min_value=0.0)
     rework_pct = st.number_input("Rework Rate (%)", 0.0, min_value=0.0, max_value=100.0)
     hr_overhead_hrs = st.number_input("Administrative Overhead (hrs)", 0.0, min_value=0.0)
-    morale_score = st.slider("Morale Impact Score", 1, 10, 5)
     seasonal_factor = st.number_input("Seasonal Adjustment Factor", 1.0, min_value=0.1, max_value=2.0)
     compliance_cost = st.number_input("Regulatory/Compliance Cost ($)", 0.0, min_value=0.0)
     benefits_loading = st.number_input("Benefit Loading (%)", 0.0, min_value=0.0, max_value=100.0)
@@ -161,7 +163,7 @@ if mode == "Single":
     c1.metric("Cost per Absence", f"${cost['Total per Absence']:.2f}")
     c2.metric("Annualized Cost", f"${cost['Annualized Cost']:.2f}")
 
-    df = pd.DataFrame(cost.items(), columns=["Component", "Amount"])
+    df = pd.DataFrame(cost.items(), columns=["Component","Amount"])
     st.dataframe(df)
 
     # Pie: Top 6 with 'Other'
@@ -170,7 +172,8 @@ if mode == "Single":
     top_df = df_sorted.head(top_n).copy()
     if len(df_sorted) > top_n:
         other_sum = df_sorted['Amount'].iloc[top_n:].sum()
-        top_df = pd.concat([top_df, pd.DataFrame([{'Component': 'Other', 'Amount': other_sum}])], ignore_index=True)
+        top_df = pd.concat([top_df, pd.DataFrame([{'Component':'Other','Amount':other_sum}])],
+                            ignore_index=True)
     fig = px.pie(top_df, names='Component', values='Amount', title='Cost Breakdown')
     st.plotly_chart(fig)
 
@@ -196,7 +199,10 @@ elif mode == "Batch" and df_profiles is not None:
             'idle_hours': r.idle_hours,
             'overhead_pct': overhead_pct
         }
-        adv = {col: r[col] for col in ['training_hours', 'skill_multiplier', 'delay_penalty', 'rework_pct', 'hr_overhead_hrs', 'seasonal_factor', 'compliance_cost', 'benefits_loading']}
+        adv = {col: r[col] for col in [
+            'training_hours','skill_multiplier','delay_penalty','rework_pct',
+            'hr_overhead_hrs','seasonal_factor','compliance_cost','benefits_loading'
+        ]}
         c = calculate_cost(base, adv)
         c['Employee'] = r.employee_name
         results.append(c)
@@ -209,3 +215,9 @@ elif mode == "Batch" and df_profiles is not None:
     st.bar_chart(dfb.set_index('Employee')['Total per Absence'])
     csvb = dfb.to_csv(index=False).encode('utf-8')
     st.download_button("Download CSV", csvb, file_name='batch_costs.csv')
+'''
+
+with open('/mnt/data/streamlit_app_corrected.py', 'w') as f:
+    f.write(fixed_code)
+
+'/mnt/data/streamlit_app_corrected.py'
